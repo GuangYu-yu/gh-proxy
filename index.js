@@ -3,12 +3,11 @@
 /**
  * static files (404.html, sw.js, conf.js)
  */
-const ASSET_URL = 'https://hunshcn.github.io/gh-proxy/'
-// 前缀，如果自定义路由为example.com/gh/*，将PREFIX改为 '/gh/'，注意，少一个杠都会错！
+const ASSET_URL = ''  // 移除默认界面
 const PREFIX = '/'
-// 分支文件使用jsDelivr镜像的开关，0为关闭，默认关闭
+// 从环境变量获取密钥
 const Config = {
-    jsdelivr: 0
+    accessKey: GITHUB_PROXY_KEY  // 直接使用环境变量名称，不需要额外处理
 }
 
 const whiteList = [] // 白名单，路径里面有包含字符的才会通过，e.g. ['/username/']
@@ -77,27 +76,25 @@ async function fetchHandler(e) {
     const req = e.request
     const urlStr = req.url
     const urlObj = new URL(urlStr)
-    let path = urlObj.searchParams.get('q')
-    if (path) {
-        return Response.redirect('https://' + urlObj.host + PREFIX + path, 301)
+    
+    // 添加调试信息
+    const params = Array.from(urlObj.searchParams.keys())
+    const key = params.length > 0 ? params[0] : null
+    console.log('Received key:', key)
+    console.log('Config key:', Config.accessKey)
+    
+    if (!key || key !== Config.accessKey) {
+        return new Response('Unauthorized', { status: 401 })
     }
-    // cfworker 会把路径中的 `//` 合并成 `/`
-    path = urlObj.href.substr(urlObj.origin.length + PREFIX.length).replace(/^https?:\/+/, 'https://')
+    
+    let path = urlObj.href.substr(urlObj.origin.length + PREFIX.length).replace(/^https?:\/+/, 'https://')
     if (path.search(exp1) === 0 || path.search(exp5) === 0 || path.search(exp6) === 0 || path.search(exp3) === 0 || path.search(exp4) === 0) {
         return httpHandler(req, path)
     } else if (path.search(exp2) === 0) {
-        if (Config.jsdelivr) {
-            const newUrl = path.replace('/blob/', '@').replace(/^(?:https?:\/\/)?github\.com/, 'https://cdn.jsdelivr.net/gh')
-            return Response.redirect(newUrl, 302)
-        } else {
-            path = path.replace('/blob/', '/raw/')
-            return httpHandler(req, path)
-        }
-    } else if (path.search(exp4) === 0) {
-        const newUrl = path.replace(/(?<=com\/.+?\/.+?)\/(.+?\/)/, '@$1').replace(/^(?:https?:\/\/)?raw\.(?:githubusercontent|github)\.com/, 'https://cdn.jsdelivr.net/gh')
-        return Response.redirect(newUrl, 302)
+        path = path.replace('/blob/', '/raw/')
+        return httpHandler(req, path)
     } else {
-        return fetch(ASSET_URL + path)
+        return new Response('Not Found', { status: 404 })
     }
 }
 
